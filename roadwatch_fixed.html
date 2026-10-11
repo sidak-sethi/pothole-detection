@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roadwatch — road surface monitoring</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --bg:#EAE8E2; --surface:#F6F5F1; --surface-2:#FBFAF7;
+  --ink:#22272B; --ink-2:#565C63; --ink-3:#868C93;
+  --line:#DAD7CF; --line-2:#C8C4BA;
+  --accent:#356C6E; --accent-ink:#234A4C; --accent-soft:#DCE8E7;
+  --sidebar:#21272A; --side-ink:#C7CDD0; --side-dim:#828A90; --side-line:#333A3E; --side-active:#2E3A3B;
+
+  --sev-minor:#6E8B74; --sev-moderate:#BE9540; --sev-severe:#B4593B; --sev-critical:#8C3A2E;
+  --sev-minor-s:#E0E7DE; --sev-moderate-s:#EFE4C7; --sev-severe-s:#EFD9CF; --sev-critical-s:#EAD1CB;
+
+  --st-new:#69707A; --st-review:#356C6E; --st-scheduled:#4E648A; --st-repaired:#4C7A5A; --st-dismissed:#9AA0A6;
+  --st-new-s:#E3E4E7; --st-review-s:#DCE8E7; --st-scheduled-s:#DFE4EE; --st-repaired-s:#DEE9E1; --st-dismissed-s:#E7E8EA;
+
+  --shadow:0 1px 2px rgba(28,30,26,.05);
+  --radius:12px; --radius-sm:8px;
+  --side-w:224px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171A; --surface:#1C2024; --surface-2:#22272B;
+    --ink:#E7E8E4; --ink-2:#A7ACB1; --ink-3:#787E84;
+    --line:#2B3136; --line-2:#3A4147;
+    --accent:#5FA0A2; --accent-ink:#9FCACB; --accent-soft:#213A3B;
+    --sidebar:#101315; --side-ink:#C7CDD0; --side-dim:#7A8288; --side-line:#242A2D; --side-active:#1E2A2B;
+
+    --sev-minor:#84A189; --sev-moderate:#D0AB58; --sev-severe:#C56E4F; --sev-critical:#C15544;
+    --sev-minor-s:#22302A; --sev-moderate-s:#332C1B; --sev-severe-s:#33221C; --sev-critical-s:#331E1A;
+
+    --st-new:#8A9099; --st-review:#5FA0A2; --st-scheduled:#7E92B8; --st-repaired:#6FA07E; --st-dismissed:#7C8288;
+    --st-new-s:#262A2F; --st-review-s:#213A3B; --st-scheduled-s:#232A35; --st-repaired-s:#20302A; --st-dismissed-s:#25292D;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171A; --surface:#1C2024; --surface-2:#22272B;
+  --ink:#E7E8E4; --ink-2:#A7ACB1; --ink-3:#787E84;
+  --line:#2B3136; --line-2:#3A4147;
+  --accent:#5FA0A2; --accent-ink:#9FCACB; --accent-soft:#213A3B;
+  --sidebar:#101315; --side-ink:#C7CDD0; --side-dim:#7A8288; --side-line:#242A2D; --side-active:#1E2A2B;
+  --sev-minor:#84A189; --sev-moderate:#D0AB58; --sev-severe:#C56E4F; --sev-critical:#C15544;
+  --sev-minor-s:#22302A; --sev-moderate-s:#332C1B; --sev-severe-s:#33221C; --sev-critical-s:#331E1A;
+  --st-new:#8A9099; --st-review:#5FA0A2; --st-scheduled:#7E92B8; --st-repaired:#6FA07E; --st-dismissed:#7C8288;
+  --st-new-s:#262A2F; --st-review-s:#213A3B; --st-scheduled-s:#232A35; --st-repaired-s:#20302A; --st-dismissed-s:#25292D;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:84px}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  font-feature-settings:"tnum" 1;
+}
+h1,h2,h3{font-family:"Space Grotesk","IBM Plex Sans",sans-serif;margin:0;font-weight:600;letter-spacing:-.01em}
+.num{font-family:"Space Grotesk",sans-serif;font-feature-settings:"tnum" 1;letter-spacing:-.02em}
+a{color:inherit}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ---------- shell ---------- */
+.app{display:grid;grid-template-columns:var(--side-w) 1fr;min-height:100%}
+
+/* ---------- sidebar ---------- */
+.side{
+  background:var(--sidebar);color:var(--side-ink);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  padding:18px 14px;gap:6px;border-right:1px solid var(--side-line);
+}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px}
+.brand .mark{width:34px;height:34px;border-radius:9px;background:var(--accent);display:grid;place-items:center;flex:none}
+.brand .mark svg{width:20px;height:20px}
+.brand b{font-family:"Space Grotesk",sans-serif;font-size:16px;color:#fff;letter-spacing:-.01em;display:block;line-height:1.1}
+.brand span{font-size:11.5px;color:var(--side-dim)}
+.nav{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.nav a,.nav .navitem{
+  display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;
+  color:var(--side-ink);text-decoration:none;font-size:13.5px;font-weight:500;
+  transition:background .12s ease,color .12s ease;border:none;background:none;width:100%;text-align:left;
+}
+.nav a:hover{background:var(--side-active)}
+.nav a.active{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+.nav a svg,.navitem svg{width:17px;height:17px;flex:none;opacity:.85}
+.nav .navitem[aria-disabled="true"]{color:var(--side-dim);cursor:not-allowed;opacity:.55}
+.nav .group{font-size:10.5px;letter-spacing:.06em;color:var(--side-dim);text-transform:uppercase;padding:14px 11px 6px;font-weight:600}
+.side-foot{margin-top:auto;border-top:1px solid var(--side-line);padding-top:12px}
+.status-dot{display:flex;align-items:center;gap:8px;padding:8px 11px;font-size:12.5px;color:var(--side-ink)}
+.status-dot i{width:8px;height:8px;border-radius:50%;background:var(--st-repaired);box-shadow:0 0 0 3px rgba(76,122,90,.18);flex:none}
+.status-dot small{color:var(--side-dim);display:block;font-size:11px}
+
+/* ---------- main ---------- */
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{
+  position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 82%,transparent);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);padding:14px 26px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.topbar .titlewrap h1{font-size:20px}
+.topbar .titlewrap p{margin:2px 0 0;color:var(--ink-3);font-size:12.5px}
+.topbar .spacer{flex:1}
+.search{
+  display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);
+  padding:8px 12px;border-radius:10px;min-width:210px;color:var(--ink-3);
+}
+.search svg{width:15px;height:15px;flex:none}
+.search input{border:none;background:none;outline:none;color:var(--ink);font-size:13px;width:100%}
+.search input::placeholder{color:var(--ink-3)}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{border:none;background:none;color:var(--ink-2);padding:6px 13px;border-radius:7px;font-weight:500;font-size:12.5px;transition:.12s}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.iconbtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);display:grid;place-items:center;transition:.12s}
+.iconbtn:hover{color:var(--ink);border-color:var(--line-2)}
+.iconbtn svg{width:17px;height:17px}
+
+.content{padding:22px 26px 40px;display:flex;flex-direction:column;gap:20px;max-width:1360px;width:100%}
+.reveal{opacity:0;transform:translateY(7px);animation:rise .45s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* ---------- attention banner ---------- */
+.banner{
+  display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:var(--radius);
+  background:var(--sev-critical-s);border:1px solid color-mix(in srgb,var(--sev-critical) 30%,transparent);
+}
+.banner .bicon{width:36px;height:36px;border-radius:9px;background:var(--sev-critical);color:#fff;display:grid;place-items:center;flex:none}
+.banner .bicon svg{width:19px;height:19px}
+.banner .btext{flex:1;min-width:0}
+.banner .btext b{font-family:"Space Grotesk",sans-serif}
+.banner .btext p{margin:1px 0 0;color:var(--ink-2);font-size:12.5px}
+.banner button.link{
+  background:none;border:1px solid color-mix(in srgb,var(--sev-critical) 45%,transparent);
+  color:var(--sev-critical);padding:8px 14px;border-radius:9px;font-weight:600;font-size:12.5px;flex:none;transition:.12s;
+}
+.banner button.link:hover{background:color-mix(in srgb,var(--sev-critical) 12%,transparent)}
+
+/* ---------- kpi ---------- */
+.kpi{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr 1fr;overflow:hidden;
+}
+.kpi .cell{padding:18px 20px;border-left:1px solid var(--line)}
+.kpi .cell:first-child{border-left:none;background:var(--surface-2)}
+.kpi .cell .lab{color:var(--ink-2);font-size:12.5px;font-weight:500;display:flex;align-items:center;gap:7px}
+.kpi .cell .lab .swatch{width:9px;height:9px;border-radius:2px}
+.kpi .cell .val{font-size:34px;line-height:1;margin-top:12px;font-weight:600}
+.kpi .cell:first-child .val{font-size:40px}
+.kpi .cell .sub{margin-top:8px;font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+.delta{font-weight:600}
+.delta.up{color:var(--sev-severe)} .delta.down{color:var(--st-repaired)}
+.delta svg{width:11px;height:11px;vertical-align:-1px}
+
+/* ---------- grid regions ---------- */
+.row{display:grid;grid-template-columns:1.65fr 1fr;gap:20px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.panel-h{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.panel-h h2{font-size:14.5px}
+.panel-h .hint{color:var(--ink-3);font-size:12px}
+.panel-h .spacer{flex:1}
+.panel-b{padding:16px 18px}
+
+/* map */
+.mapwrap{position:relative}
+#leafletMap{display:block;width:100%;height:500px;background:var(--surface-2);z-index:1}
+#leafletMap .leaflet-popup-content-wrapper,#leafletMap .leaflet-popup-tip{background:var(--surface);color:var(--ink)}
+#leafletMap .leaflet-control-attribution{font-size:10px}
+.street{stroke:var(--line);fill:none}
+.arterial{stroke:var(--line-2);fill:none}
+.river{fill:color-mix(in srgb,var(--accent) 12%,transparent)}
+.district{stroke:var(--line-2);stroke-dasharray:5 5;fill:none;opacity:.7}
+.maplabel{fill:var(--ink-3);font-size:10px;font-family:"IBM Plex Sans",sans-serif}
+.marker{cursor:pointer;transition:transform .1s ease}
+.marker circle.core{stroke:var(--surface);stroke-width:1.5}
+.marker[data-sev="minor"] circle.core{fill:var(--sev-minor)}
+.marker[data-sev="moderate"] circle.core{fill:var(--sev-moderate)}
+.marker[data-sev="severe"] circle.core{fill:var(--sev-severe)}
+.marker[data-sev="critical"] circle.core{fill:var(--sev-critical)}
+.marker[data-status="repaired"] circle.core{fill:none;stroke-width:2}
+.marker[data-status="repaired"][data-sev="minor"] circle.core{stroke:var(--sev-minor)}
+.marker[data-status="repaired"][data-sev="moderate"] circle.core{stroke:var(--sev-moderate)}
+.marker[data-status="repaired"][data-sev="severe"] circle.core{stroke:var(--sev-severe)}
+.marker[data-status="repaired"][data-sev="critical"] circle.core{stroke:var(--sev-critical)}
+.marker.sel circle.ring{opacity:1;animation:ping .7s ease-out}
+.marker circle.ring{fill:none;stroke:var(--accent);stroke-width:2;opacity:0}
+@keyframes ping{0%{r:6;opacity:.9}100%{r:20;opacity:0}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:12px 18px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-2)}
+.legend .lg{display:flex;align-items:center;gap:7px}
+.legend .lg i{width:11px;height:11px;border-radius:50%}
+.legend .lg.r i{background:none;border:2px solid var(--ink-3)}
+.tip{
+  position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);
+  padding:6px 9px;border-radius:7px;font-size:11.5px;opacity:0;transition:opacity .1s;transform:translate(-50%,-130%);
+  white-space:nowrap;z-index:5;box-shadow:var(--shadow)
+}
+.tip b{font-family:"Space Grotesk",sans-serif}
+
+/* severity + trend side column */
+.side-stack{display:flex;flex-direction:column;gap:20px}
+.sevrow{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.sevrow:last-child{margin-bottom:0}
+.sevrow .tag{display:flex;align-items:center;gap:8px;width:96px;flex:none;font-size:12.5px;color:var(--ink-2);font-weight:500}
+.sevrow .tag i{width:10px;height:10px;border-radius:3px;flex:none}
+.bar{flex:1;height:9px;background:var(--line);border-radius:6px;overflow:hidden}
+.bar span{display:block;height:100%;border-radius:6px;transition:width .5s cubic-bezier(.2,.7,.3,1)}
+.sevrow .cnt{width:26px;text-align:right;font-family:"Space Grotesk",sans-serif;font-weight:600}
+.trend{display:flex;align-items:flex-end;gap:var(--tgap,6px);height:96px;padding-top:6px}
+.trend .tb{flex:1;background:var(--accent-soft);border-radius:4px 4px 2px 2px;position:relative;min-height:3px;transition:height .5s}
+.trend .tb::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:.55}
+.trend .tb.peak::after{opacity:1}
+.trendx{display:flex;justify-content:space-between;color:var(--ink-3);font-size:10.5px;margin-top:8px}
+.confbox{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.confbox .cl{font-size:12px;color:var(--ink-2)}
+.confbox .cv{font-family:"Space Grotesk",sans-serif;font-size:22px;font-weight:600}
+.confbox .cv small{font-size:12px;color:var(--ink-3);font-weight:400}
+
+/* ---------- filters + table ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);
+  padding:6px 13px;border-radius:20px;font-size:12.5px;font-weight:500;transition:.12s;display:flex;align-items:center;gap:7px
+}
+.chip:hover{border-color:var(--line-2);color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.chip .c{background:color-mix(in srgb,var(--ink-3) 25%,transparent);border-radius:10px;padding:0 6px;font-size:11px;font-family:"Space Grotesk",sans-serif}
+.chip[aria-pressed="true"] .c{background:rgba(255,255,255,.2)}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+thead th{
+  text-align:left;padding:11px 18px;color:var(--ink-3);font-weight:600;font-size:11.5px;
+  border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap;position:sticky;top:0
+}
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{color:var(--ink)}
+thead th .caret{opacity:.4;font-size:9px}
+thead th.sorted .caret{opacity:1}
+tbody td{padding:12px 18px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr.sel{background:var(--accent-soft)}
+tbody tr:last-child td{border-bottom:none}
+.id{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:12.5px}
+.loc b{display:block;font-weight:500}
+.loc small{color:var(--ink-3);font-size:11.5px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill i{width:7px;height:7px;border-radius:50%}
+.pill.sev-minor{background:var(--sev-minor-s);color:var(--sev-minor)} .pill.sev-minor i{background:var(--sev-minor)}
+.pill.sev-moderate{background:var(--sev-moderate-s);color:var(--sev-moderate)} .pill.sev-moderate i{background:var(--sev-moderate)}
+.pill.sev-severe{background:var(--sev-severe-s);color:var(--sev-severe)} .pill.sev-severe i{background:var(--sev-severe)}
+.pill.sev-critical{background:var(--sev-critical-s);color:var(--sev-critical)} .pill.sev-critical i{background:var(--sev-critical)}
+.pill.st-new{background:var(--st-new-s);color:var(--st-new)} .pill.st-new i{background:var(--st-new)}
+.pill.st-review{background:var(--st-review-s);color:var(--st-review)} .pill.st-review i{background:var(--st-review)}
+.pill.st-scheduled{background:var(--st-scheduled-s);color:var(--st-scheduled)} .pill.st-scheduled i{background:var(--st-scheduled)}
+.pill.st-repaired{background:var(--st-repaired-s);color:var(--st-repaired)} .pill.st-repaired i{background:var(--st-repaired)}
+.pill.st-dismissed{background:var(--st-dismissed-s);color:var(--st-dismissed)} .pill.st-dismissed i{background:var(--st-dismissed)}
+.conf{display:flex;align-items:center;gap:8px;font-family:"Space Grotesk",sans-serif;font-weight:500;font-size:12.5px}
+.conf .cbar{width:42px;height:5px;border-radius:3px;background:var(--line);overflow:hidden;flex:none}
+.conf .cbar span{display:block;height:100%;background:var(--accent);border-radius:3px}
+.when{color:var(--ink-2);white-space:nowrap}
+.empty{padding:48px 20px;text-align:center;color:var(--ink-3)}
+.empty svg{width:34px;height:34px;opacity:.5;margin-bottom:10px}
+.empty b{display:block;color:var(--ink-2);font-family:"Space Grotesk",sans-serif;margin-bottom:3px}
+
+/* ---------- drawer ---------- */
+.scrim{position:fixed;inset:0;background:rgba(20,22,20,.34);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;height:100%;width:400px;max-width:92vw;background:var(--surface);
+  border-left:1px solid var(--line);z-index:50;transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.7,.3,1);
+  display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(20,22,20,.12);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)
+}
+.drawer.open{transform:none}
+.dh{display:flex;align-items:flex-start;gap:12px;padding:20px 20px 16px;border-bottom:1px solid var(--line)}
+.dh .did{font-family:"Space Grotesk",sans-serif;font-size:13px;color:var(--ink-3)}
+.dh h2{font-size:19px;margin-top:2px}
+.dh .close{margin-left:auto;background:none;border:none;color:var(--ink-3);width:32px;height:32px;border-radius:8px;display:grid;place-items:center}
+.dh .close:hover{background:var(--surface-2);color:var(--ink)}
+.db{padding:18px 20px;overflow-y:auto;flex:1}
+.detection-visual{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#2b2f33;position:relative}
+.detection-visual svg{display:block;width:100%;height:auto}
+.detection-visual .cap{position:absolute;left:10px;bottom:10px;background:rgba(20,22,24,.7);color:#eee;font-size:11px;padding:4px 9px;border-radius:6px;font-family:"Space Grotesk",sans-serif}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:16px}
+.dgrid .d{background:var(--surface);padding:12px 14px}
+.dgrid .d .k{font-size:11.5px;color:var(--ink-3)}
+.dgrid .d .v{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:15px;margin-top:3px}
+.dsection{margin-top:18px}
+.dsection .st{font-size:11.5px;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.crew{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2)}
+.crew .av{width:30px;height:30px;border-radius:8px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:12px;flex:none}
+.crew b{font-size:13px} .crew small{color:var(--ink-3);display:block;font-size:11.5px}
+.df{padding:16px 20px;border-top:1px solid var(--line);display:flex;gap:9px;flex-wrap:wrap}
+.btn{border:1px solid var(--line-2);background:var(--surface);color:var(--ink);padding:10px 15px;border-radius:9px;font-weight:600;font-size:13px;transition:.12s;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{border-color:var(--ink-3)}
+.btn svg{width:15px;height:15px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;flex:1;justify-content:center}
+.btn.primary:hover{background:var(--accent-ink)}
+.btn.ghost{color:var(--ink-2)}
+.btn.danger{color:var(--sev-severe);border-color:color-mix(in srgb,var(--sev-severe) 35%,transparent)}
+.btn.danger:hover{background:color-mix(in srgb,var(--sev-severe) 10%,transparent)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;align-items:center;padding-bottom:env(safe-area-inset-bottom,0px)}
+.toast{background:var(--ink);color:var(--surface);padding:11px 16px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 26px rgba(20,22,20,.22);display:flex;align-items:center;gap:9px;animation:toastin .22s ease}
+.toast svg{width:16px;height:16px;color:var(--st-repaired)}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- mobile ---------- */
+.menu-btn{display:none}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .side{position:fixed;left:0;top:0;z-index:70;transform:translateX(-100%);transition:transform .24s;width:250px;height:100vh}
+  .side.open{transform:none}
+  .menu-btn{display:grid}
+  .row{grid-template-columns:1fr}
+  #leafletMap{height:420px}
+  .kpi{grid-template-columns:1fr 1fr}
+  .kpi .cell:nth-child(1),.kpi .cell:nth-child(2){border-top:none}
+  .kpi .cell:nth-child(odd){border-left:none}
+  .kpi .cell{border-top:1px solid var(--line)}
+  .kpi .cell:first-child{grid-column:1/-1}
+  .content{padding:18px 16px 40px}
+  .topbar{padding:12px 16px}
+}
+@media (max-width:520px){
+  .kpi{grid-template-columns:1fr}
+  .kpi .cell{border-left:none;border-top:1px solid var(--line)}
+  .search{min-width:0;flex:1}
+  #leafletMap{height:360px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="side" id="side">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 18c2-1 3-4 6-4s3 3 5 3 3-2 3-2" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><circle cx="10" cy="13" r="1.6" fill="#fff"/><path d="M3 21h18" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </div>
+      <div><b>Roadwatch</b><span>Greater Chennai Corp.</span></div>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a href="#top" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Overview</a>
+      <a href="#map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>Live map</a>
+      <a href="#table"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Detections</a>
+      <div class="group">Operations</div>
+      <button class="navitem" aria-disabled="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5M17 11l2 2 4-4"/></svg>Repair crews</button>
+      <button class="navitem" aria-disabled="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>Reports</button>
+    </nav>
+    <div class="side-foot">
+      <div class="status-dot"><i></i><div>Detector online<small id="syncLabel">synced 2 min ago</small></div></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main" id="top">
+    <header class="topbar">
+      <button class="iconbtn menu-btn" id="menuBtn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="titlewrap">
+        <h1>Road surface monitoring</h1>
+        <p id="scopeLabel">Detected road defects across the network</p>
+      </div>
+      <div class="spacer"></div>
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input id="search" type="search" placeholder="Search street, area or ID" aria-label="Search detections">
+      </label>
+      <div class="seg" role="group" aria-label="Time range">
+        <button data-range="24h">24h</button>
+        <button data-range="7d" aria-pressed="true">7 days</button>
+        <button data-range="30d">30 days</button>
+      </div>
+      <button class="iconbtn" id="themeBtn" aria-label="Switch colour theme" title="Switch theme">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </header>
+
+    <div class="content">
+      <div id="banner"></div>
+
+      <section class="kpi reveal" id="kpi" aria-label="Key metrics"></section>
+
+      <div class="row">
+        <!-- MAP -->
+        <section class="panel reveal" id="map" style="animation-delay:.04s">
+          <div class="panel-h">
+            <h2>Defect map</h2>
+            <span class="hint">position and severity of active detections</span>
+            <div class="spacer"></div>
+            <span class="hint num" id="mapCount"></span>
+          </div>
+          <div class="mapwrap">
+            <div id="leafletMap" role="application" aria-label="Interactive map of road defects in Chennai"></div>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span class="hint" style="margin-right:2px">Severity</span>
+            <span class="lg"><i style="background:var(--sev-minor)"></i>Minor</span>
+            <span class="lg"><i style="background:var(--sev-moderate)"></i>Moderate</span>
+            <span class="lg"><i style="background:var(--sev-severe)"></i>Severe</span>
+            <span class="lg"><i style="background:var(--sev-critical)"></i>Critical</span>
+            <span class="lg r"><i></i>Repaired (outline)</span>
+          </div>
+        </section>
+
+        <!-- SIDE STACK -->
+        <div class="side-stack">
+          <section class="panel reveal" style="animation-delay:.08s">
+            <div class="panel-h"><h2>Severity mix</h2></div>
+            <div class="panel-b" id="sevmix"></div>
+          </section>
+          <section class="panel reveal" style="animation-delay:.12s">
+            <div class="panel-h"><h2>Detection volume</h2><div class="spacer"></div><span class="hint" id="trendScope">last 7 days</span></div>
+            <div class="panel-b">
+              <div class="trend" id="trend"></div>
+              <div class="trendx" id="trendx"></div>
+              <div class="confbox">
+                <div class="cl">Mean model confidence<br><span class="hint">flagging threshold 0.70</span></div>
+                <div class="cv" id="meanConf">—</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- TABLE -->
+      <section class="panel reveal" id="table" style="animation-delay:.16s">
+        <div class="panel-h" style="flex-wrap:wrap;gap:12px">
+          <h2>Detections</h2>
+          <div class="spacer"></div>
+          <div class="chips" id="chips" role="group" aria-label="Filter detections"></div>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>ID</th>
+              <th>Location</th>
+              <th class="sortable" data-sort="severity">Severity <span class="caret">▲▼</span></th>
+              <th class="sortable" data-sort="confidence">Confidence <span class="caret">▲▼</span></th>
+              <th class="sortable sorted" data-sort="detected">Detected <span class="caret">▼</span></th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div id="tableEmpty"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- DRAWER -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+  <div class="dh">
+    <div><div class="did" id="drawerId"></div><h2 id="drawerTitle"></h2></div>
+    <button class="close" id="drawerClose" aria-label="Close details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="db" id="drawerBody"></div>
+  <div class="df" id="drawerFoot"></div>
+</aside>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(function(){
+"use strict";
+const NOW = new Date();
+const HR = 3600e3, DAY = 24*HR;
+
+// ---------- data ----------
+const SEV = ['minor','moderate','severe','critical'];
+const SEV_LABEL = {minor:'Minor',moderate:'Moderate',severe:'Severe',critical:'Critical'};
+const ST_LABEL = {new:'New',review:'In review',scheduled:'Scheduled',repaired:'Repaired',dismissed:'Dismissed'};
+const CREWS = ['GCC Zone 3','Southern division','Adyar unit','OMR contract crew','Central works'];
+
+function mk(id,street,area,lat,lng,sev,conf,hrs,status,crew,depth,width){
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 12.7 || lat > 13.3 || lng < 79.9 || lng > 80.5) {
+    throw new Error(`Invalid map coordinates for ${id}`);
+  }
+  return {id,street,area,lat,lng,severity:sev,confidence:conf,detected:new Date(NOW-hrs*HR),status,crew:crew||null,depth,width};
+}
+const data = [
+  mk('PH-2098','Anna Salai','Teynampet',13.0397,80.2442,'critical',.96,3,'new',null,13,96),
+  mk('PH-2097','GST Road','Meenambakkam',12.9871,80.1764,'critical',.93,7,'review',null,11,84),
+  mk('PH-2096','Rajiv Gandhi Salai','Thoraipakkam',12.9381,80.2363,'severe',.88,10,'new',null,8,62),
+  mk('PH-2095','Velachery Main Rd','Velachery',12.9755,80.2212,'moderate',.79,14,'new',null,5,44),
+  mk('PH-2094','Sardar Patel Rd','Guindy',13.0067,80.2206,'severe',.91,20,'scheduled','GCC Zone 3',9,70),
+  mk('PH-2093','Usman Road','T. Nagar',13.0418,80.2331,'moderate',.83,26,'review',null,5,38),
+  mk('PH-2092','Poonamallee High Rd','Aminjikarai',13.0758,80.2225,'critical',.94,30,'scheduled','Central works',12,88),
+  mk('PH-2091','Sterling Road','Nungambakkam',13.0638,80.2394,'minor',.74,34,'new',null,3,26),
+  mk('PH-2090','LB Road','Adyar',13.0062,80.2561,'severe',.89,40,'scheduled','Adyar unit',8,58),
+  mk('PH-2089','Kamarajar Salai','Mylapore',13.0360,80.2676,'moderate',.81,46,'review',null,6,42),
+  mk('PH-2088','Mount-Poonamallee Rd','Porur',13.0356,80.1574,'severe',.9,52,'scheduled','GCC Zone 3',9,66),
+  mk('PH-2087','ECR','Injambakkam',12.9207,80.2490,'moderate',.77,60,'new',null,5,40),
+  mk('PH-2086','Arcot Road','Vadapalani',13.0500,80.2114,'minor',.72,66,'dismissed',null,2,22),
+  mk('PH-2085','Inner Ring Road','Koyambedu',13.0707,80.1945,'critical',.95,74,'repaired','Central works',12,92),
+  mk('PH-2084','100 Feet Road','Vadapalani',13.0520,80.2102,'moderate',.82,80,'scheduled','GCC Zone 3',6,46),
+  mk('PH-2083','GST Road','Pallavaram',12.9676,80.1499,'severe',.87,90,'repaired','Southern division',8,60),
+  mk('PH-2082','OMR','Perungudi',12.9606,80.2444,'moderate',.8,100,'review',null,5,43),
+  mk('PH-2081','Kathipara flyover approach','Guindy',13.0095,80.2010,'critical',.92,112,'scheduled','Southern division',11,80),
+  mk('PH-2080','RK Mutt Road','Mylapore',13.0309,80.2673,'minor',.71,130,'repaired','Adyar unit',3,24),
+  mk('PH-2079','Poonamallee High Rd','Kilpauk',13.0827,80.2413,'moderate',.84,150,'repaired','Central works',6,48),
+  mk('PH-2078','Velachery-Tambaram Rd','Pallikaranai',12.9422,80.2135,'severe',.86,170,'scheduled','Southern division',8,64),
+  mk('PH-2077','Anna Salai','Nandanam',13.0318,80.2407,'moderate',.79,200,'repaired','GCC Zone 3',5,41),
+  mk('PH-2076','Grand Southern Trunk Rd','Chromepet',12.9516,80.1462,'severe',.85,230,'repaired','Southern division',7,56),
+  mk('PH-2075','Nelson Manickam Rd','Aminjikarai',13.0710,80.2236,'minor',.73,260,'dismissed',null,2,20),
+  mk('PH-2074','ECR','Neelankarai',12.9495,80.2562,'moderate',.78,300,'repaired','Adyar unit',5,39),
+  mk('PH-2073','OMR','Sholinganallur',12.9013,80.2276,'critical',.93,340,'repaired','OMR contract crew',12,86),
+  mk('PH-2072','Konnur High Rd','Ayanavaram',13.0980,80.2326,'moderate',.8,410,'repaired','Central works',6,45),
+  mk('PH-2071','Medavakkam Main Rd','Medavakkam',12.9222,80.1926,'severe',.88,480,'repaired','Southern division',8,59),
+  mk('PH-2070','GST Road','Tambaram',12.9242,80.1270,'moderate',.82,560,'repaired','Southern division',5,44),
+  mk('PH-2069','Poonamallee High Rd','Maduravoyal',13.0607,80.1625,'minor',.75,650,'repaired','GCC Zone 3',3,25)
+];
+
+// ---------- state ----------
+const state = {range:'7d', chip:'all', search:'', sel:null, sortKey:'detected', sortDir:-1};
+const rangeHours = {'24h':24,'7d':7*24,'30d':30*24};
+const NEEDS = new Set(['new','review']);
+
+function inRange(d){ return (NOW - d.detected) <= rangeHours[state.range]*HR + 1000; }
+function matchChip(d){
+  switch(state.chip){
+    case 'attention': return NEEDS.has(d.status);
+    case 'critical': return d.severity==='critical' && d.status!=='dismissed';
+    case 'scheduled': return d.status==='scheduled';
+    case 'repaired': return d.status==='repaired';
+    default: return true;
+  }
+}
+function matchSearch(d){
+  if(!state.search) return true;
+  const q = state.search.toLowerCase();
+  return (d.street+' '+d.area+' '+d.id).toLowerCase().includes(q);
+}
+function scoped(){ return data.filter(inRange); }        // range only (for KPIs/map/mix)
+function visible(){ return scoped().filter(matchChip).filter(matchSearch); } // for table
+
+// ---------- helpers ----------
+const $ = s => document.querySelector(s);
+const el = (t,c)=>{const e=document.createElement(t); if(c) e.className=c; return e;};
+function ago(d){
+  const s=(NOW-d)/1000;
+  if(s<3600) return Math.max(1,Math.round(s/60))+' min ago';
+  if(s<DAY/1000) return Math.round(s/3600)+' h ago';
+  const days=Math.round(s/86400);
+  return days+(days===1?' day ago':' days ago');
+}
+const sevRank={minor:0,moderate:1,severe:2,critical:3};
+const RADIUS={minor:5,moderate:6.5,severe:8,critical:10};
+
+// ---------- KPI ----------
+function renderKPI(){
+  const s = scoped();
+  const open = s.filter(d=>NEEDS.has(d.status)).length;
+  const review = s.filter(d=>d.status==='review').length;
+  const sched = s.filter(d=>d.status==='scheduled').length;
+  const repaired = s.filter(d=>d.status==='repaired').length;
+  const critOpen = s.filter(d=>d.severity==='critical'&&NEEDS.has(d.status)).length;
+  const cells = [
+    {lab:'Needs attention', val:open, sub:`${critOpen} critical · ${review} in review`, sw:null},
+    {lab:'In review', val:review, sub:'awaiting a call', sw:'var(--st-review)'},
+    {lab:'Scheduled', val:sched, sub:'crew assigned', sw:'var(--st-scheduled)'},
+    {lab:'Repaired', val:repaired, sub:'this period', sw:'var(--st-repaired)'},
+    {lab:'Total flagged', val:s.length, sub:'in selected range', sw:null},
+  ];
+  $('#kpi').innerHTML = cells.map(c=>`
+    <div class="cell">
+      <div class="lab">${c.sw?`<span class="swatch" style="background:${c.sw}"></span>`:''}${c.lab}</div>
+      <div class="val num">${c.val}</div>
+      <div class="sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+// ---------- banner ----------
+function renderBanner(){
+  const critOpen = scoped().filter(d=>d.severity==='critical'&&NEEDS.has(d.status));
+  const b = $('#banner');
+  if(!critOpen.length){ b.innerHTML=''; return; }
+  const streets = [...new Set(critOpen.map(d=>d.street))].slice(0,2).join(' and ');
+  b.innerHTML = `<div class="banner reveal">
+    <div class="bicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v5M12 17.5v.5"/></svg></div>
+    <div class="btext"><b>${critOpen.length} critical defect${critOpen.length>1?'s':''} still unaddressed</b>
+    <p>On high-traffic corridors including ${streets}. These carry the highest safety risk.</p></div>
+    <button class="link" id="bannerView">Review critical</button>`;
+  $('#bannerView').onclick = ()=>{ setChip('critical'); document.getElementById('table').scrollIntoView({behavior:'smooth',block:'start'}); };
+}
+
+// ---------- interactive Leaflet map ----------
+// Get a free CARTO Basemaps key from https://carto.com/basemaps/apikey/
+// Paste your own key below. Do not use another person's key.
+const CARTO_API_KEY = 'cb1_4h7t_1_405a0095e8fd6d7464644013';
+let roadMap = null;
+let defectLayer = null;
+function initMap(){
+  if(typeof L === 'undefined'){
+    $('#leafletMap').innerHTML = '<div style="padding:24px;color:var(--ink-2)">The map library did not load. Check your internet connection and reload this page.</div>';
+    return;
+  }
+  roadMap = L.map('leafletMap', {scrollWheelZoom:true}).setView([13.05,80.22], 11);
+
+  if (CARTO_API_KEY && CARTO_API_KEY !== 'PASTE_YOUR_CARTO_API_KEY_HERE') {
+    L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_API_KEY)}`, {
+      maxZoom:20,
+      attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> &copy; <a href="https://carto.com/" target="_blank" rel="noopener">CARTO</a>'
+    }).addTo(roadMap);
+  } else {
+    const notice = document.createElement('div');
+    notice.style.cssText = 'position:absolute;z-index:1000;top:12px;left:50%;transform:translateX(-50%);width:max-content;max-width:90%;padding:10px 14px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);box-shadow:0 2px 10px #0002;font-size:12px;text-align:center;';
+    notice.innerHTML = 'Add your CARTO key in <code>CARTO_API_KEY</code> in index.html to load the street map.';
+    $('#leafletMap').appendChild(notice);
+  }
+  defectLayer = L.layerGroup().addTo(roadMap);
+  requestAnimationFrame(()=>roadMap.invalidateSize());
+  if (!window.__roadwatchMapResizeBound) {
+    window.addEventListener('resize', ()=>roadMap && roadMap.invalidateSize(), {passive:true});
+    window.__roadwatchMapResizeBound = true;
+  }
+}
+function renderMap(){
+  if(!roadMap || !defectLayer) return;
+  defectLayer.clearLayers();
+  const list = visible();
+  const css = getComputedStyle(document.documentElement);
+  const sevColor = {
+    minor:css.getPropertyValue('--sev-minor').trim(),
+    moderate:css.getPropertyValue('--sev-moderate').trim(),
+    severe:css.getPropertyValue('--sev-severe').trim(),
+    critical:css.getPropertyValue('--sev-critical').trim()
+  };
+  list.forEach(d=>{
+    const selected = state.sel===d.id;
+    const marker = L.circleMarker([d.lat,d.lng], {
+      radius: d.severity==='critical'?10:d.severity==='severe'?8:d.severity==='moderate'?7:6,
+      color: selected ? css.getPropertyValue('--accent').trim() : sevColor[d.severity],
+      weight: d.status==='repaired'?3:(selected?4:2),
+      opacity:1,
+      fillColor:sevColor[d.severity],
+      fillOpacity:d.status==='repaired'?0:0.9
+    });
+    marker.bindPopup(`<strong>${d.id} · ${SEV_LABEL[d.severity]}</strong><br>${d.street}, ${d.area}<br>Status: ${ST_LABEL[d.status]}<br>Confidence: ${d.confidence.toFixed(2)}`);
+    marker.on('click',()=>openDrawer(d.id));
+    marker.addTo(defectLayer);
+  });
+  $('#mapCount').textContent = list.length+' shown';
+}
+
+// ---------- severity mix ----------
+function renderSevMix(){
+  const s = scoped().filter(d=>d.status!=='dismissed');
+  const counts = {minor:0,moderate:0,severe:0,critical:0};
+  s.forEach(d=>counts[d.severity]++);
+  const max = Math.max(1,...Object.values(counts));
+  $('#sevmix').innerHTML = SEV.slice().reverse().map(k=>`
+    <div class="sevrow">
+      <span class="tag"><i style="background:var(--sev-${k})"></i>${SEV_LABEL[k]}</span>
+      <div class="bar"><span style="width:${(counts[k]/max*100).toFixed(0)}%;background:var(--sev-${k})"></span></div>
+      <span class="cnt">${counts[k]}</span>
+    </div>`).join('');
+}
+
+// ---------- trend ----------
+function renderTrend(){
+  const s = scoped();
+  let buckets, labels, scopeTxt;
+  if(state.range==='24h'){
+    buckets = new Array(12).fill(0); // 2h each
+    s.forEach(d=>{ const h=(NOW-d.detected)/HR; const b=11-Math.floor(h/2); if(b>=0&&b<12) buckets[b]++; });
+    labels=['24h','',' ','',' ','12h','',' ','',' ',' ','now'];
+    scopeTxt='last 24 hours';
+  } else {
+    const days = state.range==='7d'?7:30;
+    buckets = new Array(days).fill(0);
+    s.forEach(d=>{ const day=Math.floor((NOW-d.detected)/DAY); const b=days-1-day; if(b>=0&&b<days) buckets[b]++; });
+    if(days===7){ labels=['','','','','','','']; labels[0]='7d ago'; labels[6]='today'; scopeTxt='last 7 days'; }
+    else { labels=new Array(30).fill(''); labels[0]='30d'; labels[29]='today'; scopeTxt='last 30 days'; }
+  }
+  const max=Math.max(1,...buckets);
+  const t=$('#trend'); t.style.setProperty('--tgap', buckets.length>12?'3px':'6px');
+  t.innerHTML = buckets.map(v=>`<div class="tb${v===max&&v>0?' peak':''}" style="height:${(v/max*100).toFixed(0)}%" title="${v} detected"></div>`).join('');
+  $('#trendx').innerHTML = `<span>${labels[0]}</span><span>${labels[labels.length-1]}</span>`;
+  $('#trendScope').textContent=scopeTxt;
+  const conf = s.length? s.reduce((a,d)=>a+d.confidence,0)/s.length : 0;
+  $('#meanConf').innerHTML = s.length? conf.toFixed(2)+' <small>avg</small>' : '—';
+}
+
+// ---------- chips ----------
+function renderChips(){
+  const s = scoped();
+  const defs = [
+    {k:'all',label:'All',n:s.length},
+    {k:'attention',label:'Needs attention',n:s.filter(d=>NEEDS.has(d.status)).length},
+    {k:'critical',label:'Critical',n:s.filter(d=>d.severity==='critical'&&d.status!=='dismissed').length},
+    {k:'scheduled',label:'Scheduled',n:s.filter(d=>d.status==='scheduled').length},
+    {k:'repaired',label:'Repaired',n:s.filter(d=>d.status==='repaired').length},
+  ];
+  $('#chips').innerHTML = defs.map(d=>`<button class="chip" data-chip="${d.k}" aria-pressed="${state.chip===d.k}">${d.label}<span class="c num">${d.n}</span></button>`).join('');
+}
+
+// ---------- table ----------
+function renderTable(){
+  let list = visible().slice();
+  const k=state.sortKey, dir=state.sortDir;
+  list.sort((a,b)=>{
+    let av,bv;
+    if(k==='severity'){av=sevRank[a.severity];bv=sevRank[b.severity];}
+    else if(k==='confidence'){av=a.confidence;bv=b.confidence;}
+    else {av=a.detected;bv=b.detected;}
+    return (av>bv?1:av<bv?-1:0)*dir;
+  });
+  const tb=$('#tbody'), empty=$('#tableEmpty');
+  if(!list.length){
+    tb.innerHTML=''; 
+    empty.innerHTML=`<div class="empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+      <b>No detections match these filters</b>
+      Try widening the time range or clearing the search.</div>`;
+    return;
+  }
+  empty.innerHTML='';
+  tb.innerHTML = list.map(d=>`
+    <tr data-id="${d.id}" class="${state.sel===d.id?'sel':''}" tabindex="0">
+      <td class="id">${d.id}</td>
+      <td class="loc"><b>${d.street}</b><small>${d.area}</small></td>
+      <td><span class="pill sev-${d.severity}"><i></i>${SEV_LABEL[d.severity]}</span></td>
+      <td><span class="conf"><span class="cbar"><span style="width:${(d.confidence*100).toFixed(0)}%"></span></span>${d.confidence.toFixed(2)}</span></td>
+      <td class="when">${ago(d.detected)}</td>
+      <td><span class="pill st-${d.status}"><i></i>${ST_LABEL[d.status]}</span></td>
+    </tr>`).join('');
+}
+
+// ---------- drawer ----------
+function detectionIllustrationSVG(d){
+  const w=(RADIUS[d.severity]*3.2), cx=210, cy=120;
+  const col={minor:'#8aa08f',moderate:'#d0ab58',severe:'#c56e4f',critical:'#c15544'}[d.severity];
+  return `<svg viewBox="0 0 340 190" xmlns="http://www.w3.org/2000/svg">
+    <rect width="340" height="190" fill="#33383d"/>
+    <rect width="340" height="190" fill="url(#g)"/>
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3c4247"/><stop offset="1" stop-color="#2b2f33"/></linearGradient></defs>
+    ${[...Array(9)].map((_,i)=>`<line x1="${i*40}" y1="0" x2="${i*40-40}" y2="190" stroke="#000" stroke-opacity=".08"/>`).join('')}
+    <rect x="160" y="0" width="7" height="190" fill="#c9c4b5" opacity=".55"/>
+    <g opacity=".9"><rect x="160" y="20" width="7" height="26" fill="#e9e4d6"/><rect x="160" y="70" width="7" height="26" fill="#e9e4d6"/><rect x="160" y="120" width="7" height="26" fill="#e9e4d6"/></g>
+    <ellipse cx="${cx}" cy="${cy}" rx="${w*1.6}" ry="${w}" fill="#171a1c" opacity=".85"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${w*1.1}" ry="${w*.6}" fill="#0c0e0f"/>
+    <rect x="${cx-w*1.9}" y="${cy-w*1.3}" width="${w*3.8}" height="${w*2.6}" fill="none" stroke="${col}" stroke-width="2" rx="3"/>
+    <rect x="${cx-w*1.9}" y="${cy-w*1.3-16}" width="86" height="15" fill="${col}"/>
+    <text x="${cx-w*1.9+5}" y="${cy-w*1.3-5}" fill="#fff" font-size="10" font-family="monospace">pothole ${d.confidence.toFixed(2)}</text>
+  </svg>`;
+}
+function drawerActions(d){
+  const btns=[];
+  if(NEEDS.has(d.status)) btns.push(`<button class="btn primary" data-act="scheduled"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Schedule repair</button>`);
+  if(d.status==='scheduled') btns.push(`<button class="btn primary" data-act="repaired"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>Mark repaired</button>`);
+  if(d.status==='repaired') btns.push(`<button class="btn ghost" data-act="reopen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Reopen</button>`);
+  if(d.status!=='dismissed' && d.status!=='repaired') btns.push(`<button class="btn danger" data-act="dismissed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>False positive</button>`);
+  if(d.status==='dismissed') btns.push(`<button class="btn ghost" data-act="restore">Restore</button>`);
+  return btns.join('');
+}
+function openDrawer(id){
+  const d = data.find(x=>x.id===id); if(!d) return;
+  state.sel=id;
+  $('#drawerId').textContent=d.id;
+  $('#drawerTitle').textContent=d.street;
+  $('#drawerBody').innerHTML = `
+    <div class="detection-visual">${detectionIllustrationSVG(d)}<div class="cap">CV detection · ${d.confidence.toFixed(2)} confidence</div></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <span class="pill sev-${d.severity}"><i></i>${SEV_LABEL[d.severity]}</span>
+      <span class="pill st-${d.status}"><i></i>${ST_LABEL[d.status]}</span>
+    </div>
+    <div class="dgrid">
+      <div class="d"><div class="k">Location</div><div class="v" style="font-size:13px">${d.area}</div></div>
+      <div class="d"><div class="k">Detected</div><div class="v" style="font-size:13px">${ago(d.detected)}</div></div>
+      <div class="d"><div class="k">Depth</div><div class="v">${d.depth} cm</div></div>
+      <div class="d"><div class="k">Width</div><div class="v">${d.width} cm</div></div>
+    </div>
+    <div class="dsection">
+      <div class="st">Assigned crew</div>
+      ${d.crew?`<div class="crew"><div class="av">${d.crew.split(' ').map(w=>w[0]).slice(0,2).join('')}</div><div><b>${d.crew}</b><small>${d.status==='repaired'?'work completed':'dispatch pending'}</small></div></div>`
+      :`<div class="crew"><div class="av" style="background:var(--st-new-s);color:var(--ink-3)">—</div><div><b>Unassigned</b><small>schedule a repair to assign a crew</small></div></div>`}
+    </div>`;
+  $('#drawerFoot').innerHTML = drawerActions(d);
+  $('#drawerFoot').querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>act(d.id,b.dataset.act));
+  $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden','false');
+  $('#scrim').classList.add('open');
+  renderTable(); renderMap();
+}
+function closeDrawer(){
+  $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden','true');
+  $('#scrim').classList.remove('open'); state.sel=null; renderTable(); renderMap();
+}
+function act(id,a){
+  const d=data.find(x=>x.id===id); if(!d) return;
+  const map={scheduled:'scheduled',repaired:'repaired',dismissed:'dismissed',reopen:'review',restore:'review'};
+  d.status=map[a]||d.status;
+  if(a==='scheduled' && !d.crew) d.crew=CREWS[Math.floor(Math.random()*CREWS.length)];
+  if(a==='repaired'||a==='dismissed'||a==='restore'||a==='reopen'){/*keep crew*/}
+  const msgs={scheduled:`${id} scheduled · ${d.crew} assigned`,repaired:`${id} marked repaired`,dismissed:`${id} dismissed as a false positive`,reopen:`${id} reopened`,restore:`${id} restored to review`};
+  toast(msgs[a]||'Updated');
+  renderAll();
+  openDrawer(id); // refresh drawer state
+}
+
+// ---------- toast ----------
+function toast(msg){
+  const t=el('div','toast');
+  t.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6 9 17l-5-5"/></svg>${msg}`;
+  $('#toasts').appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .3s,transform .3s';t.style.opacity='0';t.style.transform='translateY(8px)';setTimeout(()=>t.remove(),320);},2600);
+}
+
+// ---------- theme ----------
+function applyTheme(mode){
+  document.documentElement.setAttribute('data-theme',mode);
+  try{ localStorage.setItem('rw-theme',mode); }catch(e){}
+  const dark = mode==='dark' || (mode==='auto' && matchMedia('(prefers-color-scheme:dark)').matches);
+  $('#themeIcon').innerHTML = dark
+    ? '<circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/>'
+    : '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8Z"/>';
+}
+function initTheme(){
+  let saved='auto'; try{ saved=localStorage.getItem('rw-theme')||'auto'; }catch(e){}
+  applyTheme(saved);
+}
+
+// ---------- orchestration ----------
+function renderAll(){ renderKPI(); renderBanner(); renderSevMix(); renderTrend(); renderChips(); renderMap(); renderTable(); }
+function setChip(k){ state.chip=k; renderChips(); renderMap(); renderTable(); }
+function setRange(r){
+  state.range=r;
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.range===r));
+  $('#scopeLabel').textContent = {'24h':'Defects detected in the last 24 hours','7d':'Detected road defects across the network','30d':'Detected road defects across the network'}[r];
+  renderAll();
+}
+
+// ---------- events ----------
+function wire(){
+  document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setRange(b.dataset.range));
+  $('#chips').onclick=e=>{ const b=e.target.closest('[data-chip]'); if(b) setChip(b.dataset.chip); };
+  $('#search').oninput=e=>{ state.search=e.target.value.trim(); renderMap(); renderTable(); };
+  $('#themeBtn').onclick=()=>{
+    const cur=document.documentElement.getAttribute('data-theme');
+    const next = cur==='dark'?'light':'dark';
+    applyTheme(next);
+    renderMap();
+  };
+  // sorting
+  document.querySelectorAll('th.sortable').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.sort;
+    if(state.sortKey===k) state.sortDir*=-1; else {state.sortKey=k;state.sortDir=(k==='detected')?-1:-1;}
+    document.querySelectorAll('th.sortable').forEach(t=>{t.classList.remove('sorted');t.querySelector('.caret').textContent='▲▼';});
+    th.classList.add('sorted'); th.querySelector('.caret').textContent=state.sortDir<0?'▼':'▲';
+    renderTable();
+  });
+  // table + map interaction (delegation)
+  $('#tbody').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]'); if(tr) openDrawer(tr.dataset.id);});
+  $('#tbody').addEventListener('keydown',e=>{if(e.key==='Enter'){const tr=e.target.closest('tr[data-id]'); if(tr) openDrawer(tr.dataset.id);}});
+  // drawer close
+  $('#drawerClose').onclick=closeDrawer; $('#scrim').onclick=closeDrawer;
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#drawer').classList.contains('open'))closeDrawer();});
+  // mobile menu
+  $('#menuBtn').onclick=()=>$('#side').classList.toggle('open');
+  document.querySelectorAll('.nav a').forEach(a=>a.onclick=()=>{ 
+    document.querySelectorAll('.nav a').forEach(x=>{x.classList.remove('active');x.removeAttribute('aria-current');});
+    a.classList.add('active'); a.setAttribute('aria-current','page'); $('#side').classList.remove('open');
+  });
+}
+
+// ---------- init ----------
+initTheme();
+initMap();
+wire();
+renderAll();
+})();
+</script>
+</body>
+</html>
